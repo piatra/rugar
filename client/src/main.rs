@@ -7,10 +7,11 @@ use entities::{ UDDir, LRDir };
 use serde_json;
 use serde::{Serialize, Deserialize};
 use std::io;
-use std::io::Write;
+use std::io::{Write, Read};
 use ggez::{GameResult, Context};
 use std::net::TcpStream;
 use std::io::{BufReader, BufRead};
+use std::time::Duration;
 
 const UPDATE_STEP: f32 = 5.0;
 
@@ -30,14 +31,12 @@ struct Connection {
 
 impl Connection {
     fn new(socket: TcpStream) -> Result<Connection, String> {
-        let mut reader = BufReader::new(&socket);
-        let mut response = String::new();
-        reader.read_line(&mut response).expect("Could not read");
-        println!("Player received >{}<", response.trim());
-
+        let mut de = serde_json::Deserializer::from_reader(&socket);
+        let payload1 = entities::Player::deserialize(&mut de).unwrap();
+        println!("{:?}", payload1);
         Ok(Connection {
             socket,
-            token: response.trim().parse::<u32>().unwrap(),
+            token: 4,
         })
     }
 }
@@ -83,9 +82,7 @@ impl event::EventHandler for MainState {
         main_player.pos_y += y * UPDATE_STEP;
 
         if let Some(ref mut connection) = self.connection {
-            connection.socket.write_all(
-                format!("{}, {}", main_player.pos_x, main_player.pos_y).as_bytes()
-            ).unwrap();
+            connection.socket.write_all(&serde_json::to_string(&main_player).unwrap().into_bytes());
         }
 
         Ok(())
