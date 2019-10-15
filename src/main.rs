@@ -2,12 +2,15 @@ use ggez;
 use ggez::event;
 use ggez::graphics;
 use ggez::nalgebra as na;
+use rand;
+use rand::Rng;
 
 const UPDATE_STEP: f32 = 5.0;
 
 struct GameWorld {
     players: Vec<Player>,
     main_player: Player,
+    critters: Vec<Critter>
 }
 
 #[derive(Copy, Clone)]
@@ -20,6 +23,25 @@ enum LRDir {
 enum UDDir {
     Up = -1,
     Down = 1,
+}
+
+struct Critter {
+    pos_x: f32,
+    pos_y: f32,
+    size: u32,
+    color: graphics::Color,
+}
+
+impl Critter {
+    pub fn random_color() -> graphics::Color {
+        let mut rng = rand::thread_rng();
+        graphics::Color::new(
+            rng.gen_range(0.0, 1.0),
+            rng.gen_range(0.0, 1.0),
+            rng.gen_range(0.0, 1.0),
+            1.0,
+        )
+    }
 }
 
 struct Player {
@@ -37,7 +59,15 @@ impl Default for Player {
 
 impl GameWorld {
     fn new() -> ggez::GameResult<GameWorld> {
-        let world = GameWorld { players: vec![], main_player: Default::default() };
+        let mut critters = vec![];
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            let x = rng.gen_range(0.0, 800.0);
+            let y = rng.gen_range(0.0, 800.0);
+            let size = rng.gen_range(1, 10);
+            critters.push(Critter { pos_x: x, pos_y: y, size: size, color: Critter::random_color() })
+        }
+        let world = GameWorld { players: vec![], main_player: Default::default(), critters };
         Ok(world)
     }
 }
@@ -52,14 +82,8 @@ impl event::EventHandler for GameWorld {
         if let Some(yy) = self.main_player.moving.1 {
             y = (yy as i32) as f32;
         } 
-
         self.main_player.pos_x += x * UPDATE_STEP;
         self.main_player.pos_y += y * UPDATE_STEP;
-
-        // for player in self.players.iter_mut() {
-            // player.pos_x = player.pos_x % 800.0 + 1.0;
-            // player.pos_y = player.pos_x % 800.0 + 1.0;
-        // }
         Ok(())
     }
 
@@ -110,16 +134,18 @@ impl event::EventHandler for GameWorld {
 
     fn draw(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
         graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
-        
-        let circle = graphics::Mesh::new_circle(
-            ctx,
-            graphics::DrawMode::fill(),
-            na::Point2::new(self.main_player.pos_x, self.main_player.pos_y),
-            (100 * self.main_player.size) as f32,
-            2.0,
-            graphics::WHITE,
-        )?;
-        graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
+
+        for critter in self.critters.iter() {
+            let circle = graphics::Mesh::new_circle(
+                ctx,
+                graphics::DrawMode::fill(),
+                na::Point2::new(critter.pos_x, critter.pos_y),
+                (10 * critter.size) as f32,
+                2.0,
+                critter.color,
+            )?;
+            graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
+        }
 
         for player in self.players.iter() {
             let circle = graphics::Mesh::new_circle(
@@ -133,7 +159,17 @@ impl event::EventHandler for GameWorld {
             graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
         }
 
+        let circle = graphics::Mesh::new_circle(
+            ctx,
+            graphics::DrawMode::fill(),
+            na::Point2::new(self.main_player.pos_x, self.main_player.pos_y),
+            (100 * self.main_player.size) as f32,
+            2.0,
+            graphics::WHITE,
+        )?;
+        graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
         graphics::present(ctx)?;
+
         Ok(())
     }
 }
