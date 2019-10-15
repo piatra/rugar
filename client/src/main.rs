@@ -15,7 +15,9 @@ use serde::{Serialize, Deserialize};
 const UPDATE_STEP: f32 = 5.0;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct LocalGameWorld(entities::GameWorld);
+struct LocalGameWorld {
+    game: entities::GameWorld,
+}
 
 struct Client {
     out: ws::Sender,
@@ -25,14 +27,21 @@ struct Client {
 impl ws::Handler for Client {
     fn on_open(&mut self, _: ws::Handshake) -> ws::Result<()> {
         println!("Connected");
-        let sender = self.out.clone();
-        let json = serde_json::to_string(&self.game).unwrap();
-        std::thread::spawn(move || {
-            send_updates(sender, json);
-        });
+        // let sender = self.out.clone();
+        // let json = serde_json::to_string(&self.game).unwrap();
+        // std::thread::spawn(move || {
+        //     send_updates(sender, json);
+        // });
         Ok(())
     }
-} 
+}
+
+fn update(sender: ws::Sender, state: entities::GameWorld) {
+    let json = serde_json::to_string(&state).unwrap();
+    std::thread::spawn(move || {
+        send_updates(sender, json);
+    });
+}
 
 fn send_updates(sender: ws::Sender, state: String) {
     let _ = sender.send(state);
@@ -40,7 +49,7 @@ fn send_updates(sender: ws::Sender, state: String) {
 
 impl event::EventHandler for LocalGameWorld {
     fn update(&mut self, _ctx: &mut ggez::Context) -> ggez::GameResult {
-        let mut main_player = &mut self.0.main_player;
+        let mut main_player = &mut self.game.main_player;
         let mut x: f32 = 0.0;
         let mut y: f32 = 0.0;
         if let Some(xx) = main_player.moving.0 {
@@ -61,10 +70,10 @@ impl event::EventHandler for LocalGameWorld {
         _keymod: event::KeyMods,
         _repeat: bool,
     ) {
-        let mut main_player = &mut self.0.main_player;
+        let mut main_player = &mut self.game.main_player;
         match keycode {
             event::KeyCode::Space => {
-                self.0.players.push(Default::default());
+                self.game.players.push(Default::default());
             }
             event::KeyCode::Up => {
                 main_player.moving = (main_player.moving.0, Some(UDDir::Up));
@@ -83,7 +92,7 @@ impl event::EventHandler for LocalGameWorld {
     }
 
     fn key_up_event(&mut self, _ctx: &mut ggez::Context, keycode: event::KeyCode, _keymod: event::KeyMods) {
-        let mut main_player = &mut self.0.main_player;
+        let mut main_player = &mut self.game.main_player;
         match (keycode, main_player.moving) {
             (event::KeyCode::Up, (_, Some(UDDir::Up))) => {
                 main_player.moving = (main_player.moving.0, None);
@@ -104,7 +113,7 @@ impl event::EventHandler for LocalGameWorld {
     fn draw(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
         graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
 
-        for critter in self.0.critters.iter() {
+        for critter in self.game.critters.iter() {
             let circle = graphics::Mesh::new_circle(
                 ctx,
                 graphics::DrawMode::fill(),
@@ -116,7 +125,7 @@ impl event::EventHandler for LocalGameWorld {
             graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
         }
 
-        for player in self.0.players.iter() {
+        for player in self.game.players.iter() {
             let circle = graphics::Mesh::new_circle(
                 ctx,
                 graphics::DrawMode::fill(),
@@ -131,8 +140,8 @@ impl event::EventHandler for LocalGameWorld {
         let circle = graphics::Mesh::new_circle(
             ctx,
             graphics::DrawMode::fill(),
-            na::Point2::new(self.0.main_player.pos_x, self.0.main_player.pos_y),
-            (100 * self.0.main_player.size) as f32,
+            na::Point2::new(self.game.main_player.pos_x, self.game.main_player.pos_y),
+            (100 * self.game.main_player.size) as f32,
             2.0,
             graphics::WHITE,
         )?;
@@ -144,12 +153,14 @@ impl event::EventHandler for LocalGameWorld {
 }
 
 pub fn main() -> ggez::GameResult { 
-    let mut state = LocalGameWorld(entities::GameWorld::new()?);
+    let mut state = LocalGameWorld { game: entities::GameWorld::new()? };
     let state_clone = state.clone();
+    let mut sender: Option<ws::Sender> = None;
 
     thread::spawn(move || {
         ws::connect("ws://127.0.0.1:3012", move |out| {
-            Client { out: out, game: state_clone.clone() }
+            sender = Some(out.clone());
+            Client { out, game: state_clone.clone() }
         }).unwrap();
     });
 
