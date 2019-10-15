@@ -1,46 +1,29 @@
-use entities;
-use ws::listen;
-use ws;
+use std::net::{TcpListener, TcpStream};
+use std::io;
+use std::io::Write;
+use std::io::BufRead;
 
-fn main() {
-    listen("0.0.0.0:3012", |_| {
-        move |msg: ws::Message| {
-            if let Ok(text) = msg.into_text() {
-                match serde_json::from_str::<entities::GameWorld>(&text) {
-                    Ok(status) => println!("Received status:\n{:?}\n", status),
-                    Err(e) => println!("Could not parse status: {}\n", e)
+
+
+fn main() -> io::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:3012")?;
+    let mut count: usize = 1;
+
+    // accept connections and process them serially
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                stream.write_all(format!("{}", count).as_bytes())?;
+                count += 1;
+
+                loop {
+                    let bytes_read = stream.read(&mut buf)?;
+                    if bytes_read == 0 { return Ok(()); }
+                    // stream.write(&buf[..bytes_read])?;
                 }
             }
-            Ok(())
+            Err(e) => { /* connection failed */ }
         }
-    }).unwrap()
+    }
+    Ok(())
 }
-
-// use ws;
-
-// use ws::{Handler, Message, Request, Response};
-
-// struct Server {
-    // session_id: Option<String>,
-// }
-
-// impl Handler for Server {
-    // fn on_request(&mut self, req: &Request) -> ws::Result<Response> {
-        // match (self.session_id.as_ref(), req.header("SessionId")) {
-            // (Some(exp), Some(obs)) if &obs[..] == exp.as_bytes() => ws::Response::from_request(req),
-            // (None, _) => ws::Response::from_request(req),
-            // _ => Err(ws::Error::new(ws::ErrorKind::Internal, "Invalid SessionId")),
-        // }
-    // }
-
-    // fn on_message(&mut self, message: Message) -> ws::Result<()> {
-        // println!("{}", message.as_text()?);
-        // Ok(())
-    // }
-// }
-
-// fn main() {
-    // ws::listen("127.0.0.1:3012", |_| Server {
-        // session_id: Some("magic-value".into())
-    // }).unwrap();
-// }

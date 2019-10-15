@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 pub struct GameWorld {
     pub players: Vec<Player>,
     pub main_player: Player,
-    pub critters: Vec<Critter>
+    pub objects: Vec<Critter>
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
@@ -61,7 +61,7 @@ impl GameWorld {
             let size = rng.gen_range(1, 10);
             critters.push(Critter { pos_x: x, pos_y: y, size, color: random_color() })
         }
-        let world = GameWorld { players: vec![], main_player: Default::default(), critters };
+        let world = GameWorld { players: vec![], main_player: Default::default(), objects: critters };
         Ok(world)
     }
 }

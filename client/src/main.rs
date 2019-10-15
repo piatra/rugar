@@ -2,64 +2,133 @@ use ggez;
 use ggez::event;
 use ggez::graphics;
 use ggez::nalgebra as na;
-use rand;
-use rand::Rng;
 use entities;
 use entities::{ UDDir, LRDir };
-use ws;
-use std::sync::mpsc::{ channel, Receiver, Sender };
-use std::thread;
 use serde_json;
 use serde::{Serialize, Deserialize};
+use std::io;
+use std::io::Write;
+use ggez::{GameResult, Context};
+use std::net::TcpStream;
+use std::io::{BufReader, BufRead};
 
 const UPDATE_STEP: f32 = 5.0;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct LocalGameWorld {
+type NetToken = u32;
+
+// if connection is not established player will be at   players[0]
+// else controllable player will be at                  players[connection.token]
+struct MainState {
     game: entities::GameWorld,
+    connection: Option<Connection>
 }
 
-struct Client {
-    out: ws::Sender,
-    game: LocalGameWorld,
+struct Connection {
+    socket: TcpStream,
+    token: NetToken
 }
 
-impl ws::Handler for Client {
-    fn on_open(&mut self, _: ws::Handshake) -> ws::Result<()> {
-        println!("Connected");
-        // let sender = self.out.clone();
-        // let json = serde_json::to_string(&self.game).unwrap();
-        // std::thread::spawn(move || {
-        //     send_updates(sender, json);
-        // });
-        Ok(())
+impl Connection {
+    fn new(socket: TcpStream) -> Result<Connection, String> {
+        let mut reader = BufReader::new(&socket);
+        let mut response = String::new();
+        reader.read_line(&mut response).expect("Could not read");
+        println!("Player received >{}<", response.trim());
+
+        Ok(Connection {
+            socket,
+            token: response.trim().parse::<u32>().unwrap(),
+        })
     }
 }
 
-fn update(sender: ws::Sender, state: entities::GameWorld) {
-    let json = serde_json::to_string(&state).unwrap();
-    std::thread::spawn(move || {
-        send_updates(sender, json);
-    });
+impl MainState {
+    fn new() -> GameResult<MainState> {
+        let s = MainState {
+            game: entities::GameWorld::new()?,
+            connection: None
+        };
+
+        Ok(s)
+    }
+
+    fn connect(&mut self, host: String) -> Result<(), String> {
+        match TcpStream::connect(host) {
+            Ok(stream) => match Connection::new(stream) {
+                Ok(connection) => {
+                    println!("connection established, net_token= {}", connection.token);
+                    self.connection = Some(connection);
+
+                    Ok(())
+                },
+                Err(err) => Err(err)
+            },
+            Err(e) => Err(format!("{:?}", e.kind()))
+        }
+    }
 }
 
-fn send_updates(sender: ws::Sender, state: String) {
-    let _ = sender.send(state);
-}
-
-impl event::EventHandler for LocalGameWorld {
-    fn update(&mut self, _ctx: &mut ggez::Context) -> ggez::GameResult {
+impl event::EventHandler for MainState {
+    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         let mut main_player = &mut self.game.main_player;
         let mut x: f32 = 0.0;
         let mut y: f32 = 0.0;
         if let Some(xx) = main_player.moving.0 {
             x = (xx as i32) as f32;
-        } 
+        }
         if let Some(yy) = main_player.moving.1 {
             y = (yy as i32) as f32;
-        } 
+        }
         main_player.pos_x += x * UPDATE_STEP;
         main_player.pos_y += y * UPDATE_STEP;
+
+        if let Some(ref mut connection) = self.connection {
+            connection.socket.write_all(
+                format!("{}, {}", main_player.pos_x, main_player.pos_y).as_bytes()
+            ).unwrap();
+        }
+
+        Ok(())
+    }
+
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
+        graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
+
+        for critter in self.game.objects.iter() {
+            let circle = graphics::Mesh::new_circle(
+                ctx,
+                graphics::DrawMode::fill(),
+                na::Point2::new(critter.pos_x, critter.pos_y),
+                (10 * critter.size) as f32,
+                2.0,
+                graphics::Color::new(critter.color.0, critter.color.1, critter.color.2, critter.color.3)
+            )?;
+            graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
+        }
+
+        for player in self.game.players.iter() {
+            let circle = graphics::Mesh::new_circle(
+                ctx,
+                graphics::DrawMode::fill(),
+                na::Point2::new(player.pos_x, player.pos_y),
+                (100 * player.size) as f32,
+                2.0,
+                graphics::WHITE,
+            )?;
+            graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
+        }
+
+        let circle = graphics::Mesh::new_circle(
+            ctx,
+            graphics::DrawMode::fill(),
+            na::Point2::new(self.game.main_player.pos_x, self.game.main_player.pos_y),
+            (100 * self.game.main_player.size) as f32,
+            2.0,
+            graphics::WHITE,
+        )?;
+        graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
+        graphics::present(ctx)?;
+
         Ok(())
     }
 
@@ -109,63 +178,17 @@ impl event::EventHandler for LocalGameWorld {
             _ => ()
         }
     }
-
-    fn draw(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
-        graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
-
-        for critter in self.game.critters.iter() {
-            let circle = graphics::Mesh::new_circle(
-                ctx,
-                graphics::DrawMode::fill(),
-                na::Point2::new(critter.pos_x, critter.pos_y),
-                (10 * critter.size) as f32,
-                2.0,
-                graphics::Color::new(critter.color.0, critter.color.1, critter.color.2, critter.color.3)
-            )?;
-            graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
-        }
-
-        for player in self.game.players.iter() {
-            let circle = graphics::Mesh::new_circle(
-                ctx,
-                graphics::DrawMode::fill(),
-                na::Point2::new(player.pos_x, player.pos_y),
-                (100 * player.size) as f32,
-                2.0,
-                graphics::WHITE,
-            )?;
-            graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
-        }
-
-        let circle = graphics::Mesh::new_circle(
-            ctx,
-            graphics::DrawMode::fill(),
-            na::Point2::new(self.game.main_player.pos_x, self.game.main_player.pos_y),
-            (100 * self.game.main_player.size) as f32,
-            2.0,
-            graphics::WHITE,
-        )?;
-        graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
-        graphics::present(ctx)?;
-
-        Ok(())
-    }
 }
 
-pub fn main() -> ggez::GameResult { 
-    let mut state = LocalGameWorld { game: entities::GameWorld::new()? };
-    let state_clone = state.clone();
-    let mut sender: Option<ws::Sender> = None;
-
-    thread::spawn(move || {
-        ws::connect("ws://127.0.0.1:3012", move |out| {
-            sender = Some(out.clone());
-            Client { out, game: state_clone.clone() }
-        }).unwrap();
-    });
-
+pub fn main() -> ggez::GameResult {
+    let state = &mut MainState::new().unwrap();
     let cb = ggez::ContextBuilder::new("super_simple", "ggez");
-    let (ctx, event_loop) = &mut cb.build().unwrap();
+    let (ctx, event_loop) = &mut cb.build()?;
 
-    event::run(ctx, event_loop, &mut state)
+    match state.connect("127.0.0.1:3012".to_string()) {
+        Ok(_) => println!("connected"),
+        Err(e) => println!("Failed to connect: {}", e)
+    };
+
+    event::run(ctx, event_loop, state)
 }
