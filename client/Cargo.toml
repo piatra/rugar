@@ -1,0 +1,11 @@
+[package]
+name = "client"
+version = "0.1.0"
+authors = ["Andrei Oprea <andrei.br92@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+ggez = "0.5"
+rand = "0.7.2"
+entities = { path = "../entities" }
+ws = "0.7.3"
