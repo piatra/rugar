@@ -8,4 +8,6 @@ edition = "2018"
 ggez = "0.5"
 rand = "0.7.2"
 entities = { path = "../entities" }
-ws = "0.7.3"
+ws = "0.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

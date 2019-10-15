@@ -1,9 +1,8 @@
-use ggez::graphics;
 use rand;
 use rand::Rng;
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GameWorld {
     pub players: Vec<Player>,
     pub main_player: Player,
@@ -22,24 +21,23 @@ pub enum UDDir {
     Down = 1,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Critter {
     pub pos_x: f32,
     pub pos_y: f32,
     pub size: u32,
+    pub color: (f32, f32, f32, f32),
 }
 
-pub fn random_color() -> graphics::Color {
+pub fn random_color() -> (f32, f32, f32, f32) {
     let mut rng = rand::thread_rng();
-    graphics::Color::new(
-        rng.gen_range(0.0, 1.0),
-        rng.gen_range(0.0, 1.0),
-        rng.gen_range(0.0, 1.0),
-        1.0,
-    )
+    (rng.gen_range(0.0, 1.0),
+    rng.gen_range(0.0, 1.0),
+    rng.gen_range(0.0, 1.0),
+    1.0)
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Player {
     pub pos_x: f32,
     pub pos_y: f32,
@@ -61,7 +59,7 @@ impl GameWorld {
             let x = rng.gen_range(0.0, 800.0);
             let y = rng.gen_range(0.0, 800.0);
             let size = rng.gen_range(1, 10);
-            critters.push(Critter { pos_x: x, pos_y: y, size })
+            critters.push(Critter { pos_x: x, pos_y: y, size, color: random_color() })
         }
         let world = GameWorld { players: vec![], main_player: Default::default(), critters };
         Ok(world)
