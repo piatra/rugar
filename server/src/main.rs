@@ -6,28 +6,30 @@ use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
 use entities;
 use serde::{Deserialize}; // Serialize;
+use std::sync::{ Arc, Mutex };
+use std::time::Duration;
+use std::vec::Vec;
 
 struct Application {
-    clients : std::vec::Vec<TcpStream>,
-    listeners : std::vec::Vec<std::thread::JoinHandle<()>>,
-    #[allow(unused)]
-    receiver : Receiver<String>,
-    sender : Sender<String>,
+    clients: Vec<TcpStream>, // arc mutx
+    listeners: std::vec::Vec<std::thread::JoinHandle<()>>,
+    receiver: Arc<Mutex<Receiver<String>>>,
+    sender: Sender<String>,
+    players: Arc<Mutex<Vec<entities::Player>>>,
 }
 
-fn start_listening(stream : Receiver<TcpStream>, _sender : Sender<String>) {
+fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
     let client = stream.recv().expect("Error TcpStream received invalid");
     loop {
         let mut de = serde_json::Deserializer::from_reader(&client);
         let payload1 = entities::Player::deserialize(&mut de).unwrap();
         println!("{:?}", payload1);
+        sender.send(serde_json::to_string(&payload1).unwrap()).unwrap();
     }
-
-    // sender.send(s).unwrap();
 }
 
 impl Application {
-    fn publish(&self, message: entities::Player) {
+    fn publish(&self, message: String) {
         for client in &self.clients {
             let mut buffer = BufWriter::new(client);
             buffer.write_all(&serde_json::to_string(&message).unwrap().as_bytes()).unwrap();
@@ -39,7 +41,7 @@ impl Application {
     fn add_client(&mut self, client : TcpStream) {
         self.clients.push(client);
         println!("New client connected");
-        self.publish(entities::Player { ..Default::default() });
+        // self.publish(String::from_str("Welcome"));
         let stream_clone = self.clients.last().unwrap().try_clone().unwrap();
         let (send, rec) = mpsc::channel();
         let sender = self.sender.clone();
@@ -47,9 +49,25 @@ impl Application {
         send.send(stream_clone).unwrap();
     }
 
+    fn process(&self) {
+        let cloned_rec = Arc::clone(&self.receiver);
+        let cloned_players = self.players.clone();
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(2));
+                match cloned_rec.lock().unwrap().try_recv() {
+                    Ok(d) => {
+                        println!("Server recv");
+                        cloned_players.lock().unwrap().push(Default::default());
+                    },
+                    Err(e) => println!("Server recv err {}", e),
+                }
+            }
+        });
+    }
+
     #[allow(unused)]
-    fn on_message_received(&self, mess: String) {
-        let message: entities::Player = serde_json::from_str(&*mess).unwrap();
+    fn on_message_received(&self, message: String) {
         self.publish(message);
     }
 }
@@ -57,7 +75,15 @@ impl Application {
 fn main() -> io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:3012")?;
     let (send, rec) : (Sender<String>, Receiver<String>) = mpsc::channel();
-    let mut app = Application{clients :Vec::new(), listeners : Vec::new(), receiver : rec, sender : send};
+    let mut app = Application {
+        clients: Vec::new(),
+        listeners: Vec::new(),
+        receiver: Arc::new(Mutex::new(rec)),
+        sender: send,
+        players: Default::default(),
+    };
+
+    app.process();
 
     // accept connections and process them serially
     for stream in listener.incoming() {

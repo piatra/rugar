@@ -2,6 +2,18 @@ use rand;
 use rand::Rng;
 use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Debug, Clone)]
+pub struct ServerMessage {
+    // pub players: Vec<Player>,
+    // pub objects: Option<Vec<Critter>>,
+    event: MessageType,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub enum MessageType {
+    UpdatePositions,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GameWorld {
     pub players: Vec<Player>,
