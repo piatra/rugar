@@ -9,6 +9,7 @@ use entities;
 struct Application {
     clients : std::vec::Vec<TcpStream>,
     listeners : std::vec::Vec<std::thread::JoinHandle<()>>,
+    #[allow(unused)]
     receiver : Receiver<String>,
     sender : Sender<String>,
 }
@@ -29,11 +30,10 @@ fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
 }
 
 impl Application {
-
     fn publish(&self, message: entities::Player) {
         for client in &self.clients {
             let mut buffer = BufWriter::new(client);
-            buffer.write(&serde_json::to_string(&message).unwrap().as_bytes()).unwrap();
+            buffer.write_all(&serde_json::to_string(&message).unwrap().as_bytes()).unwrap();
             buffer.flush().expect("Error while writing to TCP");
         }
         println!("wrote to all {}", self.clients.len());
@@ -50,11 +50,11 @@ impl Application {
         send.send(stream_clone).unwrap();
     }
 
+    #[allow(unused)]
     fn on_message_received(&self, mess: String) {
         let message: entities::Player = serde_json::from_str(&*mess).unwrap();
         self.publish(message);
     }
-
 }
 
 fn main() -> io::Result<()> {

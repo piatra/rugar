@@ -5,12 +5,12 @@ use ggez::nalgebra as na;
 use entities;
 use entities::{ UDDir, LRDir };
 use serde_json;
-use serde::{Serialize, Deserialize};
-use std::io;
-use std::io::{Write, Read};
+use serde::{Deserialize}; // Serialize;
+// use std::io;
+use std::io::{Write, Read}; // Read;
 use ggez::{GameResult, Context};
 use std::net::TcpStream;
-use std::io::{BufReader, BufRead};
+// use std::io::{BufReader, BufRead};
 use std::time::Duration;
 
 const UPDATE_STEP: f32 = 5.0;
@@ -39,6 +39,27 @@ impl Connection {
             token: 4,
         })
     }
+
+    fn send(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
+        self.socket.write_all(data)?;
+        Ok(())
+    }
+
+    fn get_new_players(&mut self) -> Option<entities::Player> {
+        let mut buf = [0u8; 64];
+        self.socket.set_read_timeout(Some(Duration::from_millis(10))).unwrap();
+
+        match self.socket.read(&mut buf) {
+            Ok(size) => {
+                let player: entities::Player = serde_json::from_slice(
+                    &buf[0..(size)]
+                ).unwrap();
+                println!("{:?}", player);
+                Some(player)
+            },
+            Err(e) => { println!("Err {}", e); None }
+        }
+    }
 }
 
 impl MainState {
@@ -57,7 +78,6 @@ impl MainState {
                 Ok(connection) => {
                     println!("connection established, net_token= {}", connection.token);
                     self.connection = Some(connection);
-
                     Ok(())
                 },
                 Err(err) => Err(err)
@@ -82,7 +102,10 @@ impl event::EventHandler for MainState {
         main_player.pos_y += y * UPDATE_STEP;
 
         if let Some(ref mut connection) = self.connection {
-            connection.socket.write_all(&serde_json::to_string(&main_player).unwrap().into_bytes());
+            connection.send(&serde_json::to_string(&main_player).unwrap().into_bytes())?;
+            if let Some(player) = connection.get_new_players() {
+                self.game.players.push(player.clone());
+            }
         }
 
         Ok(())
