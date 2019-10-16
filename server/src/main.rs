@@ -1,10 +1,11 @@
 use std::net::{TcpListener, TcpStream};
 use std::io;
-use std::io::{Write,BufWriter, BufReader, BufRead};
+use std::io::{ Write, BufWriter }; // BufReader, BufRead};
 use std::thread;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
 use entities;
+use serde::{Deserialize}; // Serialize;
 
 struct Application {
     clients : std::vec::Vec<TcpStream>,
@@ -14,19 +15,15 @@ struct Application {
     sender : Sender<String>,
 }
 
-fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
+fn start_listening(stream : Receiver<TcpStream>, _sender : Sender<String>) {
     let client = stream.recv().expect("Error TcpStream received invalid");
-    let mut buffer = BufReader::new(client);
     loop {
-        let mut s = String::new();
-        let data = match buffer.read_line(&mut s) {
-            Ok(data) => data,
-            Err(e) => panic!("eroooor : {}", e),
-        };
-        if data > 0 {
-            sender.send(s).unwrap();
-        }
+        let mut de = serde_json::Deserializer::from_reader(&client);
+        let payload1 = entities::Player::deserialize(&mut de).unwrap();
+        println!("{:?}", payload1);
     }
+
+    // sender.send(s).unwrap();
 }
 
 impl Application {

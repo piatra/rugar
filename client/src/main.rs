@@ -15,10 +15,6 @@ use std::time::Duration;
 
 const UPDATE_STEP: f32 = 5.0;
 
-type NetToken = u32;
-
-// if connection is not established player will be at   players[0]
-// else controllable player will be at                  players[connection.token]
 struct MainState {
     game: entities::GameWorld,
     connection: Option<Connection>
@@ -26,7 +22,6 @@ struct MainState {
 
 struct Connection {
     socket: TcpStream,
-    token: NetToken
 }
 
 impl Connection {
@@ -36,7 +31,6 @@ impl Connection {
         println!("{:?}", payload1);
         Ok(Connection {
             socket,
-            token: 4,
         })
     }
 
@@ -76,7 +70,6 @@ impl MainState {
         match TcpStream::connect(host) {
             Ok(stream) => match Connection::new(stream) {
                 Ok(connection) => {
-                    println!("connection established, net_token= {}", connection.token);
                     self.connection = Some(connection);
                     Ok(())
                 },
