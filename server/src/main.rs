@@ -11,38 +11,44 @@ use std::time::Duration;
 use std::vec::Vec;
 
 struct Application {
-    clients: Vec<TcpStream>, // arc mutx
+    clients: Arc<Mutex<Vec<TcpStream>>>, // arc mutx
     listeners: std::vec::Vec<std::thread::JoinHandle<()>>,
     receiver: Arc<Mutex<Receiver<String>>>,
     sender: Sender<String>,
-    players: Arc<Mutex<Vec<entities::Player>>>,
 }
 
 fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
     let client = stream.recv().expect("Error TcpStream received invalid");
     loop {
+        // thread::sleep(Duration::from_secs(1));
         let mut de = serde_json::Deserializer::from_reader(&client);
         let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        println!("{:?}", payload1);
+        println!("received from client {:?}", payload1);
         sender.send(serde_json::to_string(&payload1).unwrap()).unwrap();
+        // sender.send("garbage".to_string()).unwrap();
     }
+}
+
+fn write_to_client(client: &TcpStream, message: &String) {
+    let mut buffer = BufWriter::new(client);
+    let player: entities::Player = serde_json::from_str(message).unwrap();
+    println!("sending to clients {:?}", player);
+    buffer.write_all(&serde_json::to_string(&player).unwrap().as_bytes()).unwrap();
+    buffer.flush().expect("Error while writing to TCP");
 }
 
 impl Application {
     fn publish(&self, message: String) {
-        for client in &self.clients {
-            let mut buffer = BufWriter::new(client);
-            buffer.write_all(&serde_json::to_string(&message).unwrap().as_bytes()).unwrap();
-            buffer.flush().expect("Error while writing to TCP");
+        for client in &*self.clients.lock().unwrap() {
+            write_to_client(client, &message);
         }
-        println!("wrote to all {}", self.clients.len());
+        println!("wrote to all");
     }
 
     fn add_client(&mut self, client : TcpStream) {
-        self.clients.push(client);
+        let stream_clone = client.try_clone().unwrap();
+        self.clients.lock().unwrap().push(client);
         println!("New client connected");
-        // self.publish(String::from_str("Welcome"));
-        let stream_clone = self.clients.last().unwrap().try_clone().unwrap();
         let (send, rec) = mpsc::channel();
         let sender = self.sender.clone();
         self.listeners.push(thread::spawn(move || start_listening(rec, sender)));
@@ -51,16 +57,18 @@ impl Application {
 
     fn process(&self) {
         let cloned_rec = Arc::clone(&self.receiver);
-        let cloned_players = self.players.clone();
+        let cloned_clients = self.clients.clone();
         thread::spawn(move || {
             loop {
-                thread::sleep(Duration::from_secs(2));
+                // thread::sleep(Duration::from_secs(1));
                 match cloned_rec.lock().unwrap().try_recv() {
                     Ok(d) => {
-                        println!("Server recv");
-                        cloned_players.lock().unwrap().push(Default::default());
+                        println!("Server recv {:?}", d);
+                        for client in &*cloned_clients.lock().unwrap() {
+                            write_to_client(client, &d); 
+                        }
                     },
-                    Err(e) => println!("Server recv err {}", e),
+                    Err(e) => {},
                 }
             }
         });
@@ -76,11 +84,10 @@ fn main() -> io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:3012")?;
     let (send, rec) : (Sender<String>, Receiver<String>) = mpsc::channel();
     let mut app = Application {
-        clients: Vec::new(),
+        clients: Arc::new(Mutex::new(Vec::new())),
         listeners: Vec::new(),
         receiver: Arc::new(Mutex::new(rec)),
         sender: send,
-        players: Default::default(),
     };
 
     app.process();

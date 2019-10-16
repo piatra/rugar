@@ -26,9 +26,9 @@ struct Connection {
 
 impl Connection {
     fn new(socket: TcpStream) -> Result<Connection, String> {
-        let mut de = serde_json::Deserializer::from_reader(&socket);
-        let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        println!("{:?}", payload1);
+        // let mut de = serde_json::Deserializer::from_reader(&socket);
+        // let payload1 = entities::Player::deserialize(&mut de).unwrap();
+        // println!("{:?}", payload1);
         Ok(Connection {
             socket,
         })
@@ -40,18 +40,21 @@ impl Connection {
     }
 
     fn get_new_players(&mut self) -> Option<entities::Player> {
-        let mut buf = [0u8; 64];
+        let mut buf = [0u8; 100];
         self.socket.set_read_timeout(Some(Duration::from_millis(10))).unwrap();
 
         match self.socket.read(&mut buf) {
             Ok(size) => {
-                let player: entities::Player = serde_json::from_slice(
-                    &buf[0..(size)]
-                ).unwrap();
-                println!("{:?}", player);
-                Some(player)
+                match serde_json::from_slice(&buf[0..(size)]) {
+                    Ok(player) => {
+                        Some(player)
+                    },
+                    Err(e) => { println!(
+                        "err from server {} {}", e, String::from_utf8_lossy(&buf).into_owned()
+                        );  None }
+                }
             },
-            Err(e) => { println!("Err {}", e); None }
+            Err(_) => { None }
         }
     }
 }
@@ -95,6 +98,7 @@ impl event::EventHandler for MainState {
         main_player.pos_y += y * UPDATE_STEP;
 
         if let Some(ref mut connection) = self.connection {
+            println!("send {:?}", main_player);
             connection.send(&serde_json::to_string(&main_player).unwrap().into_bytes())?;
             if let Some(player) = connection.get_new_players() {
                 self.game.players.push(player.clone());
