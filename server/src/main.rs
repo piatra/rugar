@@ -10,8 +10,13 @@ use std::sync::{ Arc, Mutex };
 // use std::time::Duration;
 use std::vec::Vec;
 
+struct Client {
+    pub socket: TcpStream,
+    pub name: String,
+}
+
 struct Application {
-    clients: Arc<Mutex<Vec<TcpStream>>>, // arc mutx
+    clients: Arc<Mutex<Vec<Client>>>, // arc mutx
     listeners: std::vec::Vec<std::thread::JoinHandle<()>>,
     receiver: Arc<Mutex<Receiver<String>>>,
     sender: Sender<String>,
@@ -26,9 +31,11 @@ fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
     }
 }
 
-fn write_to_client(client: &TcpStream, message: &str) {
+fn write_to_client(client: &Client, message: &str) {
     let player: entities::Player = serde_json::from_str(message).unwrap();
-    serde_json::to_writer(client, &player).unwrap();
+    if player.name != client.name {
+        serde_json::to_writer(&client.socket, &player).unwrap();
+    }
 }
 
 impl Application {
@@ -40,8 +47,20 @@ impl Application {
 
     fn add_client(&mut self, client : TcpStream) {
         let stream_clone = client.try_clone().unwrap();
-        self.clients.lock().unwrap().push(client);
-        println!("New client connected");
+
+        // Get the client's player name. This is used to prevent broadcasting
+        // movement messages to self.
+        let mut de = serde_json::Deserializer::from_reader(&client);
+        let payload1 = entities::Player::deserialize(&mut de).unwrap();
+        let name: String = payload1.name.to_string();
+
+        self.clients.lock().unwrap().push(Client {
+            socket: client,
+            name
+        });
+
+        println!("New client connected {}", payload1.name);
+
         let (send, rec) = mpsc::channel();
         let sender = self.sender.clone();
         self.listeners.push(thread::spawn(move || start_listening(rec, sender)));

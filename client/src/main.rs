@@ -12,6 +12,9 @@ use ggez::{GameResult, Context};
 use std::net::TcpStream;
 // use std::io::{BufReader, BufRead};
 use std::time::Duration;
+use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc;
+use std::thread;
 
 const UPDATE_STEP: f32 = 5.0;
 
@@ -22,25 +25,37 @@ struct MainState {
 
 struct Connection {
     socket: TcpStream,
+    receiver: Receiver<entities::Player>,
+    sender: Sender<entities::Player>,
+}
+
+fn get_players(sender: Sender<entities::Player>, socket: TcpStream) {
+    loop {
+        thread::sleep(Duration::from_millis(15));
+        let mut de = serde_json::Deserializer::from_reader(&socket);
+        let payload1 = entities::Player::deserialize(&mut de).unwrap();
+        sender.send(payload1).unwrap();
+    }
 }
 
 impl Connection {
     fn new(socket: TcpStream) -> Result<Connection, String> {
+        let (sender, receiver) = mpsc::channel();
         Ok(Connection {
             socket,
+            sender,
+            receiver
         })
     }
 
-    fn send(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
-        self.socket.write_all(data)?;
-        Ok(())
+    fn send(&self, player: &entities::Player) -> Result<(), serde_json::error::Error> {
+        serde_json::to_writer(&self.socket, player)
     }
 
-    fn get_new_players(&mut self) -> Option<entities::Player> {
-        self.socket.set_read_timeout(Some(Duration::from_millis(10))).unwrap();
-        let mut de = serde_json::Deserializer::from_reader(&self.socket);
-        let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        Some(payload1)
+    fn listen(&self) {
+        let sender_clone = self.sender.clone();
+        let socket_clone = self.socket.try_clone().unwrap();
+        thread::spawn(move || get_players(sender_clone, socket_clone));
     }
 }
 
@@ -54,10 +69,12 @@ impl MainState {
         Ok(s)
     }
 
-    fn connect(&mut self, host: String) -> Result<(), String> {
+    fn connect(&mut self, host: String, player: &entities::Player) -> Result<(), String> {
         match TcpStream::connect(host) {
             Ok(stream) => match Connection::new(stream) {
                 Ok(connection) => {
+                    connection.listen();
+                    connection.send(player).unwrap();
                     self.connection = Some(connection);
                     Ok(())
                 },
@@ -79,13 +96,19 @@ impl event::EventHandler for MainState {
         if let Some(yy) = main_player.moving.1 {
             y = (yy as i32) as f32;
         }
+
         main_player.pos_x += x * UPDATE_STEP;
         main_player.pos_y += y * UPDATE_STEP;
 
         if let Some(ref mut connection) = self.connection {
-            connection.send(&serde_json::to_string(&main_player).unwrap().into_bytes())?;
-            if let Some(player) = connection.get_new_players() {
-                self.game.update_player(player);
+            if x != 0.0 || y != 0.0 {
+                connection.send(&main_player).unwrap();
+            }
+            match connection.receiver.recv_timeout(Duration::from_millis(15)) {
+                Ok(player) => {
+                    self.game.update_player(player)
+                },
+                _ => {  }
             }
         }
 
@@ -186,7 +209,8 @@ pub fn main() -> ggez::GameResult {
     let cb = ggez::ContextBuilder::new("super_simple", "ggez");
     let (ctx, event_loop) = &mut cb.build()?;
 
-    match state.connect("127.0.0.1:3012".to_string()) {
+    println!("connect attempt");
+    match state.connect("127.0.0.1:3012".to_string(), &state.game.main_player.clone()) {
         Ok(_) => println!("connected"),
         Err(e) => println!("Failed to connect: {}", e)
     };

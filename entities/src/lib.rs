@@ -39,10 +39,12 @@ impl GameWorld {
     }
 
     pub fn update_player(&mut self, player: Player) {
-        if let Some(index) = self.players.iter().position(|x| x.name == player.name) {
-            self.players[index] = player;
-        } else {
-            self.players.push(player);
+        if !self.main_player.same_player(&player) {
+            if let Some(index) = self.players.iter().position(|x| x.name == player.name) {
+                self.players[index] = player;
+            } else {
+                self.players.push(player);
+            }
         }
     }
 }
@@ -77,7 +79,7 @@ pub fn random_color() -> (f32, f32, f32, f32) {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Player {
-    name: String,
+    pub name: String,
     pub pos_x: f32,
     pub pos_y: f32,
     pub size: u32,
@@ -89,6 +91,10 @@ impl Player {
         thread_rng().sample_iter(&Alphanumeric)
             .take(30)
             .collect()
+    }
+
+    pub fn same_player(&self, p: &Player) -> bool {
+        self.name == p.name
     }
 
     pub fn set_name(&mut self, name: &str) {
