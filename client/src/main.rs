@@ -26,9 +26,6 @@ struct Connection {
 
 impl Connection {
     fn new(socket: TcpStream) -> Result<Connection, String> {
-        // let mut de = serde_json::Deserializer::from_reader(&socket);
-        // let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        // println!("{:?}", payload1);
         Ok(Connection {
             socket,
         })
@@ -40,22 +37,10 @@ impl Connection {
     }
 
     fn get_new_players(&mut self) -> Option<entities::Player> {
-        let mut buf = [0u8; 100];
         self.socket.set_read_timeout(Some(Duration::from_millis(10))).unwrap();
-
-        match self.socket.read(&mut buf) {
-            Ok(size) => {
-                match serde_json::from_slice(&buf[0..(size)]) {
-                    Ok(player) => {
-                        Some(player)
-                    },
-                    Err(e) => { println!(
-                        "err from server {} {}", e, String::from_utf8_lossy(&buf).into_owned()
-                        );  None }
-                }
-            },
-            Err(_) => { None }
-        }
+        let mut de = serde_json::Deserializer::from_reader(&self.socket);
+        let payload1 = entities::Player::deserialize(&mut de).unwrap();
+        Some(payload1)
     }
 }
 
@@ -98,10 +83,9 @@ impl event::EventHandler for MainState {
         main_player.pos_y += y * UPDATE_STEP;
 
         if let Some(ref mut connection) = self.connection {
-            println!("send {:?}", main_player);
             connection.send(&serde_json::to_string(&main_player).unwrap().into_bytes())?;
             if let Some(player) = connection.get_new_players() {
-                self.game.players.push(player.clone());
+                self.game.update_player(player);
             }
         }
 
@@ -159,7 +143,7 @@ impl event::EventHandler for MainState {
         let mut main_player = &mut self.game.main_player;
         match keycode {
             event::KeyCode::Space => {
-                self.game.players.push(Default::default());
+                self.game.players.push(entities::Player::new());
             }
             event::KeyCode::Up => {
                 main_player.moving = (main_player.moving.0, Some(UDDir::Up));

@@ -1,11 +1,10 @@
 use rand;
-use rand::Rng;
+use rand::{thread_rng, Rng};
+use rand::distributions::Alphanumeric;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ServerMessage {
-    // pub players: Vec<Player>,
-    // pub objects: Option<Vec<Critter>>,
     event: MessageType,
 }
 
@@ -19,6 +18,33 @@ pub struct GameWorld {
     pub players: Vec<Player>,
     pub main_player: Player,
     pub objects: Vec<Critter>
+}
+
+impl GameWorld {
+    pub fn new() -> ggez::GameResult<GameWorld> {
+        let mut critters = vec![];
+        let mut rng = rand::thread_rng();
+        for _ in 0..10 {
+            let x = rng.gen_range(0.0, 800.0);
+            let y = rng.gen_range(0.0, 800.0);
+            let size = rng.gen_range(1, 10);
+            critters.push(Critter { pos_x: x, pos_y: y, size, color: random_color() })
+        }
+        let world = GameWorld {
+            players: vec![],
+            main_player: Player::new(),
+            objects: critters
+        };
+        Ok(world)
+    }
+
+    pub fn update_player(&mut self, player: Player) {
+        if let Some(index) = self.players.iter().position(|x| x.name == player.name) {
+            self.players[index] = player;
+        } else {
+            self.players.push(player);
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
@@ -49,31 +75,33 @@ pub fn random_color() -> (f32, f32, f32, f32) {
     1.0)
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Player {
+    name: String,
     pub pos_x: f32,
     pub pos_y: f32,
     pub size: u32,
     pub moving: (Option<LRDir>, Option<UDDir>),
 }
 
-impl Default for Player {
-    fn default() -> Self {
-        Player { pos_x: 0.0, pos_y: 0.0, size: 1, moving: (None, None) }
+impl Player {
+    pub fn random_username() -> String {
+        thread_rng().sample_iter(&Alphanumeric)
+            .take(30)
+            .collect()
     }
-}
 
-impl GameWorld {
-    pub fn new() -> ggez::GameResult<GameWorld> {
-        let mut critters = vec![];
-        let mut rng = rand::thread_rng();
-        for _ in 0..10 {
-            let x = rng.gen_range(0.0, 800.0);
-            let y = rng.gen_range(0.0, 800.0);
-            let size = rng.gen_range(1, 10);
-            critters.push(Critter { pos_x: x, pos_y: y, size, color: random_color() })
+    pub fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
+    }
+
+    pub fn new() -> Player {
+        Player {
+            name: Player::random_username(),
+            pos_x: 0.0,
+            pos_y: 0.0,
+            size: 1,
+            moving: (None, None)
         }
-        let world = GameWorld { players: vec![], main_player: Default::default(), objects: critters };
-        Ok(world)
     }
 }

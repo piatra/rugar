@@ -1,13 +1,13 @@
 use std::net::{TcpListener, TcpStream};
 use std::io;
-use std::io::{ Write, BufWriter }; // BufReader, BufRead};
+// use std::io::{ Write, BufWriter }; // BufReader, BufRead};
 use std::thread;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
 use entities;
 use serde::{Deserialize}; // Serialize;
 use std::sync::{ Arc, Mutex };
-use std::time::Duration;
+// use std::time::Duration;
 use std::vec::Vec;
 
 struct Application {
@@ -20,21 +20,15 @@ struct Application {
 fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
     let client = stream.recv().expect("Error TcpStream received invalid");
     loop {
-        // thread::sleep(Duration::from_secs(1));
         let mut de = serde_json::Deserializer::from_reader(&client);
         let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        println!("received from client {:?}", payload1);
         sender.send(serde_json::to_string(&payload1).unwrap()).unwrap();
-        // sender.send("garbage".to_string()).unwrap();
     }
 }
 
-fn write_to_client(client: &TcpStream, message: &String) {
-    let mut buffer = BufWriter::new(client);
+fn write_to_client(client: &TcpStream, message: &str) {
     let player: entities::Player = serde_json::from_str(message).unwrap();
-    println!("sending to clients {:?}", player);
-    buffer.write_all(&serde_json::to_string(&player).unwrap().as_bytes()).unwrap();
-    buffer.flush().expect("Error while writing to TCP");
+    serde_json::to_writer(client, &player).unwrap();
 }
 
 impl Application {
@@ -42,7 +36,6 @@ impl Application {
         for client in &*self.clients.lock().unwrap() {
             write_to_client(client, &message);
         }
-        println!("wrote to all");
     }
 
     fn add_client(&mut self, client : TcpStream) {
@@ -60,15 +53,13 @@ impl Application {
         let cloned_clients = self.clients.clone();
         thread::spawn(move || {
             loop {
-                // thread::sleep(Duration::from_secs(1));
                 match cloned_rec.lock().unwrap().try_recv() {
                     Ok(d) => {
-                        println!("Server recv {:?}", d);
                         for client in &*cloned_clients.lock().unwrap() {
                             write_to_client(client, &d); 
                         }
                     },
-                    Err(e) => {},
+                    Err(_e) => {},
                 }
             }
         });
