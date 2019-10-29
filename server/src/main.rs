@@ -1,14 +1,14 @@
 use std::net::{TcpListener, TcpStream};
 use std::io;
-// use std::io::{ Write, BufWriter }; // BufReader, BufRead};
 use std::thread;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
 use entities;
-use serde::{Deserialize}; // Serialize;
+use serde::{Deserialize};
 use std::sync::{ Arc, Mutex };
-// use std::time::Duration;
 use std::vec::Vec;
+use std::collections::HashSet;
+use std::time::Duration;
 
 struct Client {
     pub socket: TcpStream,
@@ -26,25 +26,24 @@ fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
     let client = stream.recv().expect("Error TcpStream received invalid");
     loop {
         let mut de = serde_json::Deserializer::from_reader(&client);
-        let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        sender.send(serde_json::to_string(&payload1).unwrap()).unwrap();
+        if let Ok(payload1) = entities::Player::deserialize(&mut de) {
+            sender.send(serde_json::to_string(&payload1).unwrap()).unwrap();
+        }
     }
 }
 
-fn write_to_client(client: &Client, message: &str) {
+fn write_to_client(client: &Client, message: &str) -> bool {
     let player: entities::Player = serde_json::from_str(message).unwrap();
     if player.name != client.name {
-        serde_json::to_writer(&client.socket, &player).unwrap();
+        if let Err(_) = serde_json::to_writer(&client.socket, &player) {
+            println!("Could not write to {}", client.name);
+            return false
+        }
     }
+    return true
 }
 
 impl Application {
-    fn publish(&self, message: String) {
-        for client in &*self.clients.lock().unwrap() {
-            write_to_client(client, &message);
-        }
-    }
-
     fn add_client(&mut self, client : TcpStream) {
         let stream_clone = client.try_clone().unwrap();
 
@@ -71,22 +70,21 @@ impl Application {
         let cloned_rec = Arc::clone(&self.receiver);
         let cloned_clients = self.clients.clone();
         thread::spawn(move || {
+            let mut dropouts = HashSet::new();
             loop {
                 match cloned_rec.lock().unwrap().try_recv() {
                     Ok(d) => {
                         for client in &*cloned_clients.lock().unwrap() {
-                            write_to_client(client, &d); 
+                            if !dropouts.contains(&client.name) &&
+                               !write_to_client(client, &d) {
+                                dropouts.insert(client.name.clone());
+                            }
                         }
                     },
                     Err(_e) => {},
                 }
             }
         });
-    }
-
-    #[allow(unused)]
-    fn on_message_received(&self, message: String) {
-        self.publish(message);
     }
 }
 

@@ -33,8 +33,9 @@ fn get_players(sender: Sender<entities::Player>, socket: TcpStream) {
     loop {
         thread::sleep(Duration::from_millis(15));
         let mut de = serde_json::Deserializer::from_reader(&socket);
-        let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        sender.send(payload1).unwrap();
+        if let Ok(payload) = entities::Player::deserialize(&mut de) {
+            sender.send(payload).unwrap();
+        }
     }
 }
 
@@ -102,6 +103,7 @@ impl event::EventHandler for MainState {
 
         if let Some(ref mut connection) = self.connection {
             if x != 0.0 || y != 0.0 {
+                // TODO: this fails if the server shuts down
                 connection.send(&main_player).unwrap();
             }
             match connection.receiver.recv_timeout(Duration::from_millis(15)) {
