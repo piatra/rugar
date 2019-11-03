@@ -88,7 +88,7 @@ impl MainState {
 
 impl event::EventHandler for MainState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        let mut main_player = &mut self.game.main_player;
+        let main_player = &mut self.game.main_player;
         let mut x: f32 = 0.0;
         let mut y: f32 = 0.0;
         if let Some(xx) = main_player.moving.0 {
@@ -98,8 +98,10 @@ impl event::EventHandler for MainState {
             y = (yy as i32) as f32;
         }
 
-        main_player.pos_x += x * UPDATE_STEP;
-        main_player.pos_y += y * UPDATE_STEP;
+        main_player.pos.move_player(
+            x * UPDATE_STEP,
+            y * UPDATE_STEP
+        );
 
         if let Some(ref mut connection) = self.connection {
             if x != 0.0 || y != 0.0 {
@@ -121,13 +123,32 @@ impl event::EventHandler for MainState {
         graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
 
         for critter in self.game.objects.iter() {
+            let intersect = self.game.main_player.intersect(
+                entities::Pos::new(critter.pos_x, critter.pos_y),
+                critter.size
+                );
+            let color = if intersect {
+                graphics::Color::new(
+                    255.0,
+                    255.0,
+                    255.0,
+                    critter.color.3
+                    )
+            } else {
+                graphics::Color::new(
+                    critter.color.0,
+                    critter.color.1,
+                    critter.color.2,
+                    critter.color.3
+                    )
+            };
             let circle = graphics::Mesh::new_circle(
                 ctx,
                 graphics::DrawMode::fill(),
                 na::Point2::new(critter.pos_x, critter.pos_y),
-                (10 * critter.size) as f32,
+                critter.size as f32,
                 2.0,
-                graphics::Color::new(critter.color.0, critter.color.1, critter.color.2, critter.color.3)
+                color
             )?;
             graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
         }
@@ -136,8 +157,8 @@ impl event::EventHandler for MainState {
             let circle = graphics::Mesh::new_circle(
                 ctx,
                 graphics::DrawMode::fill(),
-                na::Point2::new(player.pos_x, player.pos_y),
-                (100 * player.size) as f32,
+                na::Point2::new(player.pos.x(), player.pos.y()),
+                player.size as f32,
                 2.0,
                 graphics::WHITE,
             )?;
@@ -147,8 +168,8 @@ impl event::EventHandler for MainState {
         let circle = graphics::Mesh::new_circle(
             ctx,
             graphics::DrawMode::fill(),
-            na::Point2::new(self.game.main_player.pos_x, self.game.main_player.pos_y),
-            (100 * self.game.main_player.size) as f32,
+            na::Point2::new(self.game.main_player.pos.x(), self.game.main_player.pos.y()),
+            self.game.main_player.size as f32,
             2.0,
             graphics::WHITE,
         )?;

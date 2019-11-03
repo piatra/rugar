@@ -2,6 +2,7 @@ use rand;
 use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 use serde::{Serialize, Deserialize};
+use std::f32;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ServerMessage {
@@ -27,7 +28,7 @@ impl GameWorld {
         for _ in 0..10 {
             let x = rng.gen_range(0.0, 800.0);
             let y = rng.gen_range(0.0, 800.0);
-            let size = rng.gen_range(1, 10);
+            let size = 10 * rng.gen_range(1, 10);
             critters.push(Critter { pos_x: x, pos_y: y, size, color: random_color() })
         }
         let world = GameWorld {
@@ -80,10 +81,52 @@ pub fn random_color() -> (f32, f32, f32, f32) {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Player {
     pub name: String,
-    pub pos_x: f32,
-    pub pos_y: f32,
+    pub pos: Pos,
     pub size: u32,
     pub moving: (Option<LRDir>, Option<UDDir>),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct Pos {
+    pos_x: f32,
+    pos_y: f32,
+}
+
+impl Pos {
+    pub fn new(x: f32, y: f32) -> Self {
+        Pos { pos_x: x, pos_y: y }
+    }
+
+    pub fn x(&self) -> f32 {
+        self.pos_x
+    }
+
+    pub fn y(&self) -> f32 {
+        self.pos_y
+    }
+
+    fn inc_x(&mut self, val: f32) {
+        self.pos_x += val;
+    }
+
+    fn inc_y(&mut self, val: f32) {
+        self.pos_y += val;
+    }
+
+    pub fn move_player(&mut self, x: f32, y: f32) {
+        self.inc_x(x);
+        self.inc_y(y);
+    }
+
+    pub fn object_distance(&mut self, pos: Pos) -> f32 {
+        ((self.pos_x - pos.x()) * (self.pos_x - pos.x()) +
+        (self.pos_y - pos.y()) * (self.pos_y - pos.y())).sqrt()
+    }
+
+    pub fn object_distance_2(&mut self, pos: Pos) -> f32 {
+        (self.pos_x - pos.x()) * (self.pos_x - pos.x()) +
+        (self.pos_y - pos.y()) * (self.pos_y - pos.y())
+    }
 }
 
 impl Player {
@@ -101,13 +144,49 @@ impl Player {
         self.name = name.to_string();
     }
 
+    // (R0 - R1)^2 <= (x0 - x1)^2 + (y0 - y1)^2 <= (R0 + R1)^2
+    // but only second part because we want to capture player inside critter
+    pub fn intersect(&mut self, pos: Pos, size: u32) -> bool {
+        let distance = self.pos.object_distance_2(pos);
+        let high_r: f32 = ((self.size + size) * (self.size + size)) as f32;
+        distance <= high_r
+    }
+
     pub fn new() -> Player {
         Player {
             name: Player::random_username(),
-            pos_x: 0.0,
-            pos_y: 0.0,
-            size: 1,
+            pos: Pos { pos_x: 0.0, pos_y: 0.0 },
+            size: 10,
             moving: (None, None)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dummy() {
+        let mut obj = Pos { pos_x: 10.0, pos_y: 10.0 };
+        assert_eq!(0.0, obj.object_distance(Pos { pos_x: 10.0, pos_y: 10.0 }));
+    }
+
+    #[test]
+    fn test_distance() {
+        let mut obj = Pos { pos_x: 10.0, pos_y: 10.0 };
+        assert_eq!(5.0, obj.object_distance(Pos { pos_x: 13.0, pos_y: 14.0 }));
+    }
+
+    #[test]
+    fn test_intersect_dummy() {
+        let mut p = Player::new();
+        assert_eq!(true, p.intersect(Pos { pos_x: 0.0, pos_y: 0.0 }, 1));
+    }
+
+    #[test]
+    fn test_intersect_sized() {
+        let mut p = Player::new();
+        assert_eq!(true, p.intersect(Pos { pos_x: 103.0, pos_y: 104.0 }, 100));
     }
 }
