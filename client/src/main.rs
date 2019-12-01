@@ -122,33 +122,26 @@ impl event::EventHandler for MainState {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
 
+        self.game.objects = self.game.objects.clone()
+            .into_iter()
+            .filter(|x| !self.game.main_player.intersect(
+                entities::Pos::new(x.pos_x, x.pos_y),
+                x.size
+            )).collect();
+
         for critter in self.game.objects.iter() {
-            let intersect = self.game.main_player.intersect(
-                entities::Pos::new(critter.pos_x, critter.pos_y),
-                critter.size
-                );
-            let color = if intersect {
-                graphics::Color::new(
-                    255.0,
-                    255.0,
-                    255.0,
-                    critter.color.3
-                    )
-            } else {
-                graphics::Color::new(
-                    critter.color.0,
-                    critter.color.1,
-                    critter.color.2,
-                    critter.color.3
-                    )
-            };
             let circle = graphics::Mesh::new_circle(
                 ctx,
                 graphics::DrawMode::fill(),
                 na::Point2::new(critter.pos_x, critter.pos_y),
                 critter.size as f32,
                 2.0,
-                color
+                graphics::Color::new(
+                    critter.color.0,
+                    critter.color.1,
+                    critter.color.2,
+                    critter.color.3
+                )
             )?;
             graphics::draw(ctx, &circle, (na::Point2::new(0.0, 0.0),))?;
         }
