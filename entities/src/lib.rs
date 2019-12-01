@@ -4,12 +4,14 @@ use rand::distributions::Alphanumeric;
 use serde::{Serialize, Deserialize};
 use std::f32;
 
-#[derive(Serialize, Debug, Clone)]
-pub struct ServerMessage {
-    event: MessageType,
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Message {
+    pub event: MessageType,
+    pub game_world: Option<GameWorld>,
+    pub player: Option<Player>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum MessageType {
     UpdatePositions,
 }
@@ -22,7 +24,7 @@ pub struct GameWorld {
 }
 
 impl GameWorld {
-    pub fn new() -> ggez::GameResult<GameWorld> {
+    pub fn new() -> GameWorld {
         let mut critters = vec![];
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
@@ -31,11 +33,14 @@ impl GameWorld {
             let size = 10 * rng.gen_range(1, 10);
             critters.push(Critter { pos_x: x, pos_y: y, size, color: random_color() })
         }
-        let world = GameWorld {
+        GameWorld {
             players: vec![],
             main_player: Player::new(),
             objects: critters
-        };
+        }
+    }
+
+    pub fn new_ggez_world(world: GameWorld) -> ggez::GameResult<GameWorld> {
         Ok(world)
     }
 

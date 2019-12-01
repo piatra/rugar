@@ -25,17 +25,29 @@ struct MainState {
 
 struct Connection {
     socket: TcpStream,
-    receiver: Receiver<entities::Player>,
-    sender: Sender<entities::Player>,
+    receiver: Receiver<entities::Message>,
+    sender: Sender<entities::Message>,
 }
 
-fn get_players(sender: Sender<entities::Player>, socket: TcpStream) {
+fn get_players(sender: Sender<entities::Message>, socket: TcpStream) {
     loop {
         thread::sleep(Duration::from_millis(15));
         let mut de = serde_json::Deserializer::from_reader(&socket);
-        if let Ok(payload) = entities::Player::deserialize(&mut de) {
+        if let Ok(payload) = entities::Message::deserialize(&mut de) {
+            println!("got payload");
             sender.send(payload).unwrap();
+        } else {
+            println!("not ok here");
         }
+        //     println!("got payload");
+        //     match payload.event {
+        //         entities::MessageType::UpdatePositions => {
+        //             println!("got payload of update positions type");
+        //             let player = payload.player.unwrap();
+        //             sender.send(player).unwrap();
+        //         }
+        //     }
+        // }
     }
 }
 
@@ -49,8 +61,12 @@ impl Connection {
         })
     }
 
-    fn send(&self, player: &entities::Player) -> Result<(), serde_json::error::Error> {
-        serde_json::to_writer(&self.socket, player)
+    fn send(&self, player: entities::Player) -> Result<(), serde_json::error::Error> {
+        serde_json::to_writer(&self.socket, &entities::Message {
+            event: entities::MessageType::UpdatePositions,
+            player: Some(player),
+            game_world: None,
+        })
     }
 
     fn listen(&self) {
@@ -63,14 +79,16 @@ impl Connection {
 impl MainState {
     fn new() -> GameResult<MainState> {
         let s = MainState {
-            game: entities::GameWorld::new()?,
+            game: entities::GameWorld::new_ggez_world(
+                entities::GameWorld::new()
+            )?,
             connection: None
         };
 
         Ok(s)
     }
 
-    fn connect(&mut self, host: String, player: &entities::Player) -> Result<(), String> {
+    fn connect(&mut self, host: String, player: entities::Player) -> Result<(), String> {
         match TcpStream::connect(host) {
             Ok(stream) => match Connection::new(stream) {
                 Ok(connection) => {
@@ -106,13 +124,19 @@ impl event::EventHandler for MainState {
         if let Some(ref mut connection) = self.connection {
             if x != 0.0 || y != 0.0 {
                 // TODO: this fails if the server shuts down
-                connection.send(&main_player).unwrap();
+                connection.send(main_player.clone()).unwrap();
             }
             match connection.receiver.recv_timeout(Duration::from_millis(15)) {
-                Ok(player) => {
-                    self.game.update_player(player)
+                Ok(message) => {
+                    println!("received ok message");
+                    match message.event {
+                        entities::MessageType::UpdatePositions => {
+                            let player = message.player.unwrap();
+                            self.game.update_player(player)
+                        }
+                    }
                 },
-                _ => {  }
+                _ => { }
             }
         }
 
@@ -226,7 +250,7 @@ pub fn main() -> ggez::GameResult {
     let (ctx, event_loop) = &mut cb.build()?;
 
     println!("connect attempt");
-    match state.connect("127.0.0.1:3012".to_string(), &state.game.main_player.clone()) {
+    match state.connect("127.0.0.1:3012".to_string(), state.game.main_player.clone()) {
         Ok(_) => println!("connected"),
         Err(e) => println!("Failed to connect: {}", e)
     };

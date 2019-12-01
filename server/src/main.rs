@@ -20,24 +20,32 @@ struct Application {
     listeners: std::vec::Vec<std::thread::JoinHandle<()>>,
     receiver: Arc<Mutex<Receiver<String>>>,
     sender: Sender<String>,
+    game_world: entities::GameWorld,
 }
 
 fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
     let client = stream.recv().expect("Error TcpStream received invalid");
     loop {
         let mut de = serde_json::Deserializer::from_reader(&client);
-        if let Ok(payload1) = entities::Player::deserialize(&mut de) {
-            sender.send(serde_json::to_string(&payload1).unwrap()).unwrap();
+        if let Ok(payload) = entities::Message::deserialize(&mut de) {
+            sender.send(serde_json::to_string(&payload).unwrap()).unwrap();
         }
     }
 }
 
 fn write_to_client(client: &Client, message: &str) -> bool {
-    let player: entities::Player = serde_json::from_str(message).unwrap();
-    if player.name != client.name {
-        if let Err(_) = serde_json::to_writer(&client.socket, &player) {
-            println!("Could not write to {}", client.name);
-            return false
+    let message: entities::Message = serde_json::from_str(message).unwrap();
+    println!("message {:?}", message);
+    match message.event {
+        entities::MessageType::UpdatePositions => {
+            let player = message.player.unwrap();
+            if player.name != client.name {
+                println!("{} write to {}", player.name, client.name);
+                if let Err(_) = serde_json::to_writer(&client.socket, &player) {
+                    println!("Could not write to {}", client.name);
+                    return false
+                }
+            }
         }
     }
     return true
@@ -50,20 +58,26 @@ impl Application {
         // Get the client's player name. This is used to prevent broadcasting
         // movement messages to self.
         let mut de = serde_json::Deserializer::from_reader(&client);
-        let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        let name: String = payload1.name.to_string();
+        let payload = entities::Message::deserialize(&mut de).unwrap();
 
-        self.clients.lock().unwrap().push(Client {
-            socket: client,
-            name
-        });
+        match payload.event {
+            entities::MessageType::UpdatePositions => {
+                let player = payload.player.unwrap();
+                let name: String = player.name.to_string();
 
-        println!("New client connected {}", payload1.name);
+                self.clients.lock().unwrap().push(Client {
+                    socket: client,
+                    name
+                });
 
-        let (send, rec) = mpsc::channel();
-        let sender = self.sender.clone();
-        self.listeners.push(thread::spawn(move || start_listening(rec, sender)));
-        send.send(stream_clone).unwrap();
+                println!("New client connected {}", player.name);
+
+                let (send, rec) = mpsc::channel();
+                let sender = self.sender.clone();
+                self.listeners.push(thread::spawn(move || start_listening(rec, sender)));
+                send.send(stream_clone).unwrap();
+            }
+        }
     }
 
     fn process(&self) {
@@ -96,6 +110,7 @@ fn main() -> io::Result<()> {
         listeners: Vec::new(),
         receiver: Arc::new(Mutex::new(rec)),
         sender: send,
+        game_world: entities::GameWorld::new(),
     };
 
     app.process();
