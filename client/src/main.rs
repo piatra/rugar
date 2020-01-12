@@ -50,7 +50,8 @@ impl Connection {
     }
 
     fn send(&self, player: &entities::Player) -> Result<(), serde_json::error::Error> {
-        serde_json::to_writer(&self.socket, player)
+        let message = entities::Message::player_update(player);
+        serde_json::to_writer(&self.socket, &message)
     }
 
     fn listen(&self) {
@@ -106,7 +107,7 @@ impl event::EventHandler for MainState {
         if let Some(ref mut connection) = self.connection {
             if x != 0.0 || y != 0.0 {
                 // TODO: this fails if the server shuts down
-                connection.send(&main_player).unwrap();
+                connection.send(main_player).unwrap();
             }
             match connection.receiver.recv_timeout(Duration::from_millis(15)) {
                 Ok(message) => {

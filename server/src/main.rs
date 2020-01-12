@@ -26,20 +26,26 @@ fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
     let client = stream.recv().expect("Error TcpStream received invalid");
     loop {
         let mut de = serde_json::Deserializer::from_reader(&client);
-        if let Ok(payload1) = entities::Player::deserialize(&mut de) {
+        if let Ok(payload1) = entities::Message::deserialize(&mut de) {
             sender.send(serde_json::to_string(&payload1).unwrap()).unwrap();
         }
     }
 }
 
 fn write_to_client(client: &Client, message: &str) -> bool {
-    let player: entities::Player = serde_json::from_str(message).unwrap();
-    if player.name != client.name {
-        let message = entities::Message::player_update(player);
-        if let Err(_) = serde_json::to_writer(&client.socket, &message) {
-            println!("Could not write to {}", client.name);
-            return false
-        }
+    let message: entities::Message = serde_json::from_str(message).unwrap();
+    match message.mtype {
+        entities::MessageType::PlayerPosition => {
+            let player = message.player.unwrap();
+            if player.name != client.name {
+                let message = entities::Message::player_update(&player);
+                if let Err(_) = serde_json::to_writer(&client.socket, &message) {
+                    println!("Could not write to {}", client.name);
+                    return false
+                }
+            }
+        },
+        _ => println!("Unexpected message type")
     }
     return true
 }
@@ -51,15 +57,22 @@ impl Application {
         // Get the client's player name. This is used to prevent broadcasting
         // movement messages to self.
         let mut de = serde_json::Deserializer::from_reader(&client);
-        let payload1 = entities::Player::deserialize(&mut de).unwrap();
-        let name: String = payload1.name.to_string();
+        let payload1 = entities::Message::deserialize(&mut de).unwrap();
 
-        self.clients.lock().unwrap().push(Client {
-            socket: client,
-            name
-        });
+        match payload1.mtype {
+            entities::MessageType::PlayerPosition => {
+                let player = payload1.player.unwrap();
+                let name: String = player.name.to_string();
 
-        println!("New client connected {}", payload1.name);
+                self.clients.lock().unwrap().push(Client {
+                    socket: client,
+                    name
+                });
+
+                println!("New client connected {}", player.name);
+            },
+            _ => println!("Other type of message received, this shouldn't happen")
+    }
 
         let (send, rec) = mpsc::channel();
         let sender = self.sender.clone();

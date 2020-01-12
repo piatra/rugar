@@ -18,11 +18,11 @@ pub enum MessageType {
 }
 
 impl Message {
-    pub fn player_update(p: Player) -> Message {
+    pub fn player_update(p: &Player) -> Message {
         Message {
             mtype: MessageType::PlayerPosition,
             world: None,
-            player: Some(p),
+            player: Some(Player::copy(p)),
         }
     }
 }
@@ -99,7 +99,7 @@ pub struct Player {
     pub moving: (Option<LRDir>, Option<UDDir>),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
 pub struct Pos {
     pos_x: f32,
     pos_y: f32,
@@ -170,6 +170,15 @@ impl Player {
             name: Player::random_username(),
             pos: Pos { pos_x: 0.0, pos_y: 0.0 },
             size: 10,
+            moving: (None, None)
+        }
+    }
+
+    pub fn copy(p: &Player) -> Player {
+        Player {
+            name: String::from(&p.name),
+            pos: Pos { pos_x: p.pos.pos_x, pos_y: p.pos.pos_y },
+            size: p.size,
             moving: (None, None)
         }
     }
