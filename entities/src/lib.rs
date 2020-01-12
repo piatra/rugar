@@ -4,14 +4,27 @@ use rand::distributions::Alphanumeric;
 use serde::{Serialize, Deserialize};
 use std::f32;
 
-#[derive(Serialize, Debug, Clone)]
-pub struct ServerMessage {
-    event: MessageType,
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Message {
+    pub mtype: MessageType,
+    pub world: Option<Vec<Critter>>,
+    pub player: Option<Player>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum MessageType {
-    UpdatePositions,
+    PlayerPosition,
+    WorldState,
+}
+
+impl Message {
+    pub fn player_update(p: Player) -> Message {
+        Message {
+            mtype: MessageType::PlayerPosition,
+            world: None,
+            player: Some(p),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

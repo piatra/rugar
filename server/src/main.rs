@@ -35,7 +35,8 @@ fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
 fn write_to_client(client: &Client, message: &str) -> bool {
     let player: entities::Player = serde_json::from_str(message).unwrap();
     if player.name != client.name {
-        if let Err(_) = serde_json::to_writer(&client.socket, &player) {
+        let message = entities::Message::player_update(player);
+        if let Err(_) = serde_json::to_writer(&client.socket, &message) {
             println!("Could not write to {}", client.name);
             return false
         }

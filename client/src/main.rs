@@ -25,15 +25,15 @@ struct MainState {
 
 struct Connection {
     socket: TcpStream,
-    receiver: Receiver<entities::Player>,
-    sender: Sender<entities::Player>,
+    receiver: Receiver<entities::Message>,
+    sender: Sender<entities::Message>,
 }
 
-fn get_players(sender: Sender<entities::Player>, socket: TcpStream) {
+fn get_players(sender: Sender<entities::Message>, socket: TcpStream) {
     loop {
         thread::sleep(Duration::from_millis(15));
         let mut de = serde_json::Deserializer::from_reader(&socket);
-        if let Ok(payload) = entities::Player::deserialize(&mut de) {
+        if let Ok(payload) = entities::Message::deserialize(&mut de) {
             sender.send(payload).unwrap();
         }
     }
@@ -109,8 +109,12 @@ impl event::EventHandler for MainState {
                 connection.send(&main_player).unwrap();
             }
             match connection.receiver.recv_timeout(Duration::from_millis(15)) {
-                Ok(player) => {
-                    self.game.update_player(player)
+                Ok(message) => {
+                    match message.mtype {
+                        entities::MessageType::PlayerPosition =>
+                            self.game.update_player(message.player.unwrap()),
+                        _ => println!("Err Other type of message received")
+                    }
                 },
                 _ => {  }
             }
