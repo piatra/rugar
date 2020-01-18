@@ -8,7 +8,6 @@ use serde::{Deserialize};
 use std::sync::{ Arc, Mutex };
 use std::vec::Vec;
 use std::collections::HashSet;
-use std::time::Duration;
 
 struct Client {
     pub socket: TcpStream,
@@ -16,10 +15,11 @@ struct Client {
 }
 
 struct Application {
-    clients: Arc<Mutex<Vec<Client>>>, // arc mutx
+    clients: Arc<Mutex<Vec<Client>>>,
     listeners: std::vec::Vec<std::thread::JoinHandle<()>>,
     receiver: Arc<Mutex<Receiver<String>>>,
     sender: Sender<String>,
+    world_state: entities::GameWorld,
 }
 
 fn start_listening(stream : Receiver<TcpStream>, sender : Sender<String>) {
@@ -39,15 +39,23 @@ fn write_to_client(client: &Client, message: &str) -> bool {
             let player = message.player.unwrap();
             if player.name != client.name {
                 let message = entities::Message::player_update(&player);
-                if let Err(_) = serde_json::to_writer(&client.socket, &message) {
+                if serde_json::to_writer(&client.socket, &message).is_err() {
                     println!("Could not write to {}", client.name);
                     return false
                 }
             }
         },
-        _ => println!("Unexpected message type")
+        entities::MessageType::WorldState => {
+            if serde_json::to_writer(&client.socket, &message).is_err() {
+                println!("Could not write to {}", client.name);
+                return false
+            } else {
+                println!("Sent world state to {:?}", client.name);
+            }
+        }
     }
-    return true
+
+    true
 }
 
 impl Application {
@@ -63,16 +71,25 @@ impl Application {
             entities::MessageType::PlayerPosition => {
                 let player = payload1.player.unwrap();
                 let name: String = player.name.to_string();
-
-                self.clients.lock().unwrap().push(Client {
+                let player_client = Client {
                     socket: client,
                     name
-                });
+                };
 
                 println!("New client connected {}", player.name);
+
+                // send world_state
+                write_to_client(
+                    &player_client,
+                    &serde_json::to_string(
+                        &entities::Message::world_update(&self.world_state)
+                        ).unwrap()
+                    );
+
+                self.clients.lock().unwrap().push(player_client);
             },
             _ => println!("Other type of message received, this shouldn't happen")
-    }
+        }
 
         let (send, rec) = mpsc::channel();
         let sender = self.sender.clone();
@@ -110,6 +127,7 @@ fn main() -> io::Result<()> {
         listeners: Vec::new(),
         receiver: Arc::new(Mutex::new(rec)),
         sender: send,
+        world_state: entities::GameWorld::new(),
     };
 
     app.process();

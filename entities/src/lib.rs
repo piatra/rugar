@@ -25,6 +25,13 @@ impl Message {
             player: Some(Player::copy(p)),
         }
     }
+    pub fn world_update(w: &GameWorld) -> Message {
+        Message {
+            mtype: MessageType::WorldState,
+            world: Some(w.objects.to_vec()),
+            player: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -35,7 +42,7 @@ pub struct GameWorld {
 }
 
 impl GameWorld {
-    pub fn new() -> ggez::GameResult<GameWorld> {
+    pub fn new() -> GameWorld {
         let mut critters = vec![];
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
@@ -44,12 +51,15 @@ impl GameWorld {
             let size = 10 * rng.gen_range(1, 10);
             critters.push(Critter { pos_x: x, pos_y: y, size, color: random_color() })
         }
-        let world = GameWorld {
+        GameWorld {
             players: vec![],
             main_player: Player::new(),
             objects: critters
-        };
-        Ok(world)
+        }
+    }
+
+    pub fn ggez_new() -> ggez::GameResult<GameWorld> {
+        Ok(GameWorld::new())
     }
 
     pub fn update_player(&mut self, player: Player) {
@@ -60,6 +70,10 @@ impl GameWorld {
                 self.players.push(player);
             }
         }
+    }
+
+    pub fn update_world(&mut self, objects: Vec<Critter>) {
+        self.objects = objects;
     }
 }
 
@@ -209,6 +223,6 @@ mod tests {
     #[test]
     fn test_intersect_sized() {
         let mut p = Player::new();
-        assert_eq!(true, p.intersect(Pos { pos_x: 103.0, pos_y: 104.0 }, 100));
+        assert_eq!(true, p.intersect(Pos { pos_x: 50.0, pos_y: 50.0 }, 100));
     }
 }

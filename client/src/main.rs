@@ -5,12 +5,9 @@ use ggez::nalgebra as na;
 use entities;
 use entities::{ UDDir, LRDir };
 use serde_json;
-use serde::{Deserialize}; // Serialize;
-// use std::io;
-use std::io::{Write, Read}; // Read;
+use serde::{Deserialize};
 use ggez::{GameResult, Context};
 use std::net::TcpStream;
-// use std::io::{BufReader, BufRead};
 use std::time::Duration;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
@@ -64,7 +61,7 @@ impl Connection {
 impl MainState {
     fn new() -> GameResult<MainState> {
         let s = MainState {
-            game: entities::GameWorld::new()?,
+            game: entities::GameWorld::ggez_new()?,
             connection: None
         };
 
@@ -114,7 +111,8 @@ impl event::EventHandler for MainState {
                     match message.mtype {
                         entities::MessageType::PlayerPosition =>
                             self.game.update_player(message.player.unwrap()),
-                        _ => println!("Err Other type of message received")
+                        entities::MessageType::WorldState =>
+                            self.game.update_world(message.world.unwrap()),
                     }
                 },
                 _ => {  }
