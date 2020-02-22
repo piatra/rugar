@@ -77,13 +77,13 @@ impl GameWorld {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
 pub enum LRDir {
     Left = -1,
     Right = 1,
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
 pub enum UDDir {
     Up = -1,
     Down = 1,
@@ -111,6 +111,7 @@ pub struct Player {
     pub pos: Pos,
     pub size: u32,
     pub moving: (Option<LRDir>, Option<UDDir>),
+    pub prev_move: (Option<LRDir>, Option<UDDir>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
@@ -179,12 +180,46 @@ impl Player {
         distance <= high_r
     }
 
+    pub fn save_prev_move(&mut self) -> () {
+        match self.moving.0 {
+            Some(_) => self.prev_move = self.moving,
+            None => match self.moving.1 {
+                Some(_) => self.prev_move = self.moving,
+                _ => ()
+            }
+        }
+    }
+
+    pub fn opposite_direction(&mut self) -> bool {
+        if self.prev_move == (None, None) {
+            return true
+        }
+
+        if let Some(now_lr) = self.prev_move.0 {
+            if let Some(prev_lr) = self.moving.0 {
+                if prev_lr != now_lr {
+                    return true;
+                }
+            }
+        }
+        if let Some(now_ud) = self.moving.1 {
+            if let Some(prev_ud) = self.prev_move.1 {
+                if now_ud != prev_ud {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     pub fn new() -> Player {
         Player {
             name: Player::random_username(),
             pos: Pos { pos_x: 0.0, pos_y: 0.0 },
             size: 10,
-            moving: (None, None)
+            moving: (None, None),
+            prev_move: (None, None),
         }
     }
 
@@ -193,7 +228,8 @@ impl Player {
             name: String::from(&p.name),
             pos: Pos { pos_x: p.pos.pos_x, pos_y: p.pos.pos_y },
             size: p.size,
-            moving: (None, None)
+            moving: (None, None),
+            prev_move: (None, None),
         }
     }
 }

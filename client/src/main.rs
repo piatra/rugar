@@ -13,7 +13,7 @@ use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
 use std::thread;
 
-const UPDATE_STEP: f32 = 5.0;
+const UPDATE_STEP: f32 = 4.0;
 
 struct MainState {
     game: entities::GameWorld,
@@ -96,13 +96,33 @@ impl event::EventHandler for MainState {
             y = (yy as i32) as f32;
         }
 
-        main_player.pos.move_player(
-            x * UPDATE_STEP,
-            y * UPDATE_STEP
+        let no_intersect = self.game.objects.iter().all(|critter| {
+            !main_player.intersect(
+                entities::Pos::new(critter.pos_x, critter.pos_y),
+                critter.size
+            )}
         );
+        let mut new_pos_player = entities::Player::new();
+        new_pos_player.pos.move_player(
+            main_player.pos.x() + x * UPDATE_STEP,
+            main_player.pos.y() + y * UPDATE_STEP,
+        );
+        let no_future_intersect = self.game.objects.iter().all(|critter| {
+            !new_pos_player.intersect(
+                entities::Pos::new(critter.pos_x, critter.pos_y),
+                critter.size
+            )}
+        );
+        let can_move = no_intersect || no_future_intersect;
+        if can_move {
+            main_player.pos.move_player(
+                x * UPDATE_STEP,
+                y * UPDATE_STEP
+            );
+        }
 
         if let Some(ref mut connection) = self.connection {
-            if x != 0.0 || y != 0.0 {
+            if can_move && (x != 0.0 || y != 0.0) {
                 // TODO: this fails if the server shuts down
                 connection.send(main_player).unwrap();
             }
@@ -190,10 +210,8 @@ impl event::EventHandler for MainState {
         _repeat: bool,
     ) {
         let mut main_player = &mut self.game.main_player;
+        main_player.save_prev_move();
         match keycode {
-            event::KeyCode::Space => {
-                self.game.players.push(entities::Player::new());
-            }
             event::KeyCode::Up => {
                 main_player.moving = (main_player.moving.0, Some(UDDir::Up));
             }
